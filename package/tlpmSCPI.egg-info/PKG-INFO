@@ -1,6 +1,0 @@
-Metadata-Version: 2.1
-Name: tlpmSCPI
-Version: 0.0.0
-Summary: SCPI interface for ThorLabs PM16-130 that extends functionality to linux
-Author: Jon Pajaud
-Author-email: jpajaud@arizona.edu
