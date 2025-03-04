@@ -11,13 +11,14 @@ SERIAL = os.getenv('SERIAL_TL_PM16_130')
 system = platform.system()
 if system == 'Linux':
     class pm16_130:
-        def __init__(self,event=None):
+        def __init__(self,backend=None,event=None):
             self.idVendor  = '0x'+hex(0x1313)[2:].upper() # only want numbers to be capital
             self.idProduct = '0x'+hex(0x807b)[2:].upper()
             self.serial    = SERIAL
             self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
             self.open      = False
-            self.event = event
+            self.event     = event
+            self.backend   = backend
 
             if not self.init_device():
                 raise RuntimeError(f"Device not found with address {self.address}")
@@ -52,8 +53,8 @@ if system == 'Linux':
                     self.event.set()
 
         def init_device(self):
-        
-            rm = pyvisa.ResourceManager()
+            backend_args = (self.backend,) if self.backend is not None else ()
+            rm = pyvisa.ResourceManager(*backend_args)
             available = self.address in rm.list_resources()
             if not available:
                 self.device = None
@@ -172,7 +173,7 @@ elif system == 'Windows':
             self.serial    = SERIAL
             self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
             self.open      = False
-            self.event = event
+            self.event     = event
             self._tlpm_manager = None
 
             if not self.init_device():
