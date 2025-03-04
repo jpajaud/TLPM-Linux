@@ -1,0 +1,325 @@
+import platform, warnings
+import pyvisa
+# add enum
+# need to design a simple gui with plotting and statistics
+
+# VisaIOError: VI_ERROR_CONN_LOST (-1073807194): The connection for the given session has been lost.
+
+match platform.system():
+    case 'Linux':
+        class pm16_130:
+            def __init__(self,event=None):
+                self.idVendor  = '0x'+hex(0x1313)[2:].upper() # only want numbers to be capital
+                self.idProduct = '0x'+hex(0x807b)[2:].upper()
+                self.serial    = str(230614207)
+                self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
+                self.open      = False
+                self.event = event
+
+                if not self.init_device():
+                    raise RuntimeError(f"Device not found with address {self.address}")
+
+            def __enter__(self):
+                return self
+            
+            def __exit__(self,exception_type,exception_value,exception_traceback):
+                self.close()
+
+            def __str__(self):
+                return f"PM16-130 ({'Open' if self.open else 'Closed'})"
+
+            def __repr__(self):
+                return str(self)
+            
+            def query(self,cmd):
+                try:
+                    value = self.device.query(cmd)
+                    return value
+                except pyvisa.VisaIOError:
+                    self.device.close() # perhaps send signal as well
+                    if self.event is not None:
+                        self.event.set()
+
+            def write(self,cmd):
+                try:
+                    self.device.write(cmd)
+                except pyvisa.VisaIOError:
+                    self.device.close() # perhaps send signal as well
+                    if self.event is not None:
+                        self.event.set()
+
+            def init_device(self):
+            
+                rm = pyvisa.ResourceManager()
+                available = self.address in rm.list_resources()
+                if not available:
+                    self.device = None
+                    self.open = False
+                else:
+                    self.device = rm.open_resource(self.address)
+                    self.open = True
+                return self.open
+                
+            def close(self):
+                if self.open:
+                    self.device.close()
+                    self.open = False
+
+            def getWavelength(self):
+                if self.open:
+                    value = self.query("SENS:CORR:WAV?")
+                    return float(value)
+                else:
+                    return None
+
+            def setWavelength(self,wavelength):
+                if self.open:
+                    assert (wavelength<=1100) and (wavelength>=400), f"Wavelength of {wavelength:f}nm is out of range"
+                    self.write(f"SENS:CORR:WAV {wavelength:.6f}")
+
+            def getPhotodiodeResponsivity(self):
+                if self.open:
+                    value = self.device.query("SENS:CORR:POW:PDI:RESP?")
+                    return float(value)
+                else:
+                    return None
+                
+            def getPowerAutoRange(self):
+                if self.open:
+                    value = self.device.query("SENS:POW:RANGE:AUTO?")
+                    return int(value)
+                else:
+                    return None
+
+            def setPowerAutoRange(self,value):
+                if self.open:
+                    assert value in [0,1], "Invalid value for Autorange"
+                    self.device.write(f"SENS:POW:RANG:AUTO {value:d}")
+            
+            def getPowerRange(self):
+                if self.open:
+                    value = self.device.query("SENS:POW:RANG?")
+                    return float(value)
+                else:
+                    return None
+
+            def setPowerRange(self,value):
+                if self.open:
+                    assert (value<.5) and (value>5e-9), "Power value is out of range"
+                    self.device.query(f"SENS:POW:RANG {value}")
+
+            def getPowerRef(self):
+                if self.open:
+                    value = self.device.query("SENS:POW:REF?")
+                    return float(value)
+                else:
+                    return None
+
+            def getPowerUnit(self):
+                if self.open:
+                    value = self.device.query("SENS:POW:UNIT?")
+                    return int(value)
+                else:
+                    return None
+
+            def measPower(self):
+                if self.open:
+                    value = self.device.query("MEAS:SCAL:POW?")
+                    return float(value)
+                else:
+                    return None
+
+            def reset(self):
+                if self.open:
+                    value = self.device.query("*RST")
+                    # return self.device.query("SYST:ERR?")
+
+            def selfTest(self):
+                if self.open:
+                    value = self.device.query("*TST?")
+                    # return is an integer with different error numbers
+                    # error numbers are not listed in any manuals (might be able to extract from TLPM.dll)
+                    return int(value)
+                else:
+                    return None
+
+            def checkError(self):
+                if self.open:
+                    value = self.device.query("SYST:ERR?")
+                    return value
+                else:
+                    return None
+
+            def getCalibrationMsg(self):
+                if self.open:
+                    value = self.device.query("CAL:STR?")
+                    return value
+                else:
+                    return None
+
+    case 'Windows':
+        from tlpmSCPI import TLPM_small
+        from datetime import datetime
+        from ctypes import cdll,c_long, c_ulong, c_uint32,byref,create_string_buffer,c_bool,c_char_p,c_int,c_int16,c_double, sizeof, c_voidp
+
+        class pm16_130:
+            def __init__(self,event=None):
+                self.idVendor  = '0x'+hex(0x1313)[2:].upper() # only want numbers to be capital
+                self.idProduct = '0x'+hex(0x807b)[2:].upper()
+                self.serial    = str(230614207)
+                self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
+                self.open      = False
+                self.event = event
+                self._tlpm_manager = None
+
+                if not self.init_device():
+                    raise RuntimeError(f"Device not found with address {self.address}")
+
+            def __enter__(self):
+                return self
+            
+            def __exit__(self,exception_type,exception_value,exception_traceback):
+                self.close()
+
+            def __str__(self):
+                return f"PM16-130 ({'Open' if self.open else 'Closed'})"
+
+            def __repr__(self):
+                return str(self)
+            
+            def query(self,cmd):
+                raise NotImplementedError()
+                warnings.warn('Not implemented on windows')
+
+            def write(self,cmd):
+                raise NotImplementedError()
+                warnings.warn('Not implemented on windows')
+
+            def init_device(self):
+                tlPM = TLPM_small.TLPM()
+                deviceCount = c_uint32()
+                tlPM.findRsrc(byref(deviceCount))
+
+                resourceName = create_string_buffer(1024)
+
+                for i in range(0, deviceCount.value):
+                    tlPM.getRsrcName(c_int(i), resourceName)
+                    self.address = c_char_p(resourceName.raw).value
+                    break
+
+                tlPM.close()
+
+                tlPM = TLPM_small.TLPM()
+                tlPM.open(resourceName, c_bool(True), c_bool(True))
+                self._tlpm_manager = tlPM    
+                self.open = True
+                return self.open        
+
+                
+            def close(self):
+                if self.open:
+                    self._tlpm_manager.close()
+                    self.open = False
+
+            def getWavelength(self):
+                if self.open:
+                    wavelength = c_double()
+                    self._tlpm_manager.getWavelength(TLPM_small.TLPM_ATTR_SET_VAL, byref(wavelength))
+                    return wavelength.value
+                else:
+                    return None
+
+            def setWavelength(self,wavelength):
+                if self.open:
+                    assert (wavelength<=1100) and (wavelength>=400), f"Wavelength of {wavelength:f}nm is out of range"
+                    wavelength = c_double(wavelength)
+                    self._tlpm_manager.setWavelength(wavelength)
+                    
+            def getPhotodiodeResponsivity(self):
+                raise NotImplementedError()
+                if self.open:
+                    value = self.device.query("SENS:CORR:POW:PDI:RESP?")
+                    return float(value)
+                else:
+                    return None
+                
+            def getPowerAutoRange(self):
+                if self.open:
+                    powerAutorangeMode = c_int16()
+                    self._tlpm_manager.getPowerAutorange(byref(powerAutorangeMode))
+                    value = self.device.query("SENS:POW:RANGE:AUTO?")
+                    return powerAutorangeMode.value
+                else:
+                    return None
+
+            def setPowerAutoRange(self,value):
+                if self.open:
+                    assert value in [0,1], "Invalid value for Autorange"
+                    self._tlpm_manager.setPowerAutoRange(value)
+            
+            def getPowerRange(self):
+                if self.open:
+                    powerValue = c_double()
+                    self._tlpm_manager.getPowerRange(TLPM_small.TLPM_ATTR_SET_VAL, byref(powerValue))
+                    return powerValue.value
+                else:
+                    return None
+
+            def setPowerRange(self,value):
+                if self.open:
+                    assert (value<.5) and (value>5e-9), "Power value is out of range"
+                    power_to_Measure = c_double(value)
+                    self._tlpm_manager.setPowerRange(self, power_to_Measure)
+                    
+            def getPowerRef(self):
+                if self.open:
+                    powerReferenceValue = c_double()
+                    self._tlpm_manager.getPowerRef(TLPM_small.TLPM_ATTR_SET_VAL, byref(powerReferenceValue))
+                    return powerReferenceValue.value
+                else:
+                    return None
+
+            def getPowerUnit(self):
+                if self.open:
+                    powerUnit = c_int16()
+                    self._tlpm_manager.getPowerUnit(self, byref(powerUnit))
+                    return powerUnit.value
+                else:
+                    return None
+
+            def measPower(self):
+                if self.open:
+                    powerValue = c_double()
+                    self._tlpm_manager.measPower(byref(powerValue))
+                    return powerValue.value
+                else:
+                    return None
+
+            def reset(self):
+                if self.open:
+                    self._tlpm_manager.reset()
+
+            def selfTest(self):
+                if self.open:
+                    selfTestResult = c_int16()
+                    description = create_string_buffer(1024)
+                    self._tlpm_manager.selfTest(byref(selfTestResult), description)
+                    # return is an integer with different error numbers
+                    # error numbers are not listed in any manuals (might be able to extract from TLPM.dll)
+                    return selfTestResult.value
+                else:
+                    return None
+
+            def checkError(self):
+                raise NotImplementedError()
+                
+            def getCalibrationMsg(self):
+                if self.open:
+                    message = create_string_buffer(1024)
+                    self._tlpm_manager.getCalibrationMsg(message)
+                    return c_char_p(message.raw).value
+                else:
+                    return None
+
+    case _:
+        raise RuntimeError('Unexpected os')
