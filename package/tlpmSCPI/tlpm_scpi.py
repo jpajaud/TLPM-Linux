@@ -1,4 +1,4 @@
-import os, platform, warnings
+import os, platform, re, warnings
 import pyvisa
 
 # add enum
@@ -6,6 +6,10 @@ import pyvisa
 
 # VisaIOError: VI_ERROR_CONN_LOST (-1073807194): The connection for the given session has been lost.
 
+# this allows one ot override the serial scanning function
+# by default, the code will choose the first address it finds
+# if two devices are connected, this environment variable can 
+# be set in order to force which device is accessed
 SERIAL = os.getenv('SERIAL_TL_PM16_130')
 
 system = platform.system()
@@ -15,9 +19,10 @@ if system == 'Linux':
             self.idVendor  = '0x'+hex(0x1313)[2:].upper() # only want numbers to be capital
             self.idProduct = '0x'+hex(0x807b)[2:].upper()
             self.serial    = SERIAL
-            self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
             self.open      = False
             self.event     = event
+            if backend not in [None,'@py']:
+                raise RuntimeError(f"Backend '{backend}' not recognized")
             self.backend   = backend
 
             if not self.init_device():
@@ -55,7 +60,13 @@ if system == 'Linux':
         def init_device(self):
             backend_args = (self.backend,) if self.backend is not None else ()
             rm = pyvisa.ResourceManager(*backend_args)
-            available = self.address in rm.list_resources()
+            resources = rm.list_resources()
+            # scan through resource list, backend tells format
+            # self.serial is None if no environment variable is set
+            # setting environment variable will override behavior of scan_address
+            self.address = self.scan_address(resources)
+            available = self.address in resources # this is needed in case self.serial is set by environment variable
+
             if not available:
                 self.device = None
                 self.open = False
@@ -63,7 +74,29 @@ if system == 'Linux':
                 self.device = rm.open_resource(self.address)
                 self.open = True
             return self.open
+        
+        def scan_address(self,resources):
+
+            replace_pattern = r'\(\\d\+\)'
+            search_pattern = r'(\d+)'
+            if self.backend is None:
+                template = f'USB0::{self.idVendor}::{self.idProduct}::{search_pattern}::INSTR'
+            elif self.backend == '@py':
+                template = f'USB0::{int(self.idVendor,16)}::{int(self.idProduct,16)}::{search_pattern}::0::INSTR'
             
+            if self.serial is not None:
+                return re.sub(replace_pattern,self.serial,template)
+            
+            pattern = re.compile(template)
+            for resource in resources:
+                matches = pattern.findall(resource)
+                if len(matches)==1:
+                    self.serial = int(matches[0])
+                    return re.sub(replace_pattern,str(self.serial),template)
+                    
+            if self.serial is None:
+                raise RuntimeError('Serial pattern not found')
+
         def close(self):
             if self.open:
                 self.device.close()
@@ -170,7 +203,7 @@ elif system == 'Windows':
         def __init__(self,event=None):
             self.idVendor  = '0x'+hex(0x1313)[2:].upper() # only want numbers to be capital
             self.idProduct = '0x'+hex(0x807b)[2:].upper()
-            self.serial    = SERIAL
+            self.serial    = SERIAL # this is not used for Windows
             self.address   = f'USB0::{self.idVendor}::{self.idProduct}::{self.serial}::INSTR'
             self.open      = False
             self.event     = event
