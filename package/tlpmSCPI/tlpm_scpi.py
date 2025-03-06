@@ -233,7 +233,7 @@ elif system == 'Windows':
             raise NotImplementedError()
 
         def init_device(self):
-            tlPM = TLPM_small.TLPM()
+            tlPM = TLPM_windows.TLPM()
             deviceCount = c_uint32()
             tlPM.findRsrc(byref(deviceCount))
 
@@ -246,7 +246,7 @@ elif system == 'Windows':
 
             tlPM.close()
 
-            tlPM = TLPM_small.TLPM()
+            tlPM = TLPM_windows.TLPM()
             tlPM.open(resourceName, c_bool(True), c_bool(True))
             self._tlpm_manager = tlPM    
             self.open = True
@@ -261,7 +261,7 @@ elif system == 'Windows':
         def getWavelength(self):
             if self.open:
                 wavelength = c_double()
-                self._tlpm_manager.getWavelength(TLPM_small.TLPM_ATTR_SET_VAL, byref(wavelength))
+                self._tlpm_manager.getWavelength(TLPM_windows.TLPM_ATTR_SET_VAL, byref(wavelength))
                 return wavelength.value
             else:
                 return None
@@ -297,7 +297,7 @@ elif system == 'Windows':
         def getPowerRange(self):
             if self.open:
                 powerValue = c_double()
-                self._tlpm_manager.getPowerRange(TLPM_small.TLPM_ATTR_SET_VAL, byref(powerValue))
+                self._tlpm_manager.getPowerRange(TLPM_windows.TLPM_ATTR_SET_VAL, byref(powerValue))
                 return powerValue.value
             else:
                 return None
@@ -311,7 +311,7 @@ elif system == 'Windows':
         def getPowerRef(self):
             if self.open:
                 powerReferenceValue = c_double()
-                self._tlpm_manager.getPowerRef(TLPM_small.TLPM_ATTR_SET_VAL, byref(powerReferenceValue))
+                self._tlpm_manager.getPowerRef(TLPM_windows.TLPM_ATTR_SET_VAL, byref(powerReferenceValue))
                 return powerReferenceValue.value
             else:
                 return None
