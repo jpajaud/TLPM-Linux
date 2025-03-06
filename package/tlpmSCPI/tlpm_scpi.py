@@ -11,10 +11,6 @@ import pyvisa
 # if two devices are connected, this environment variable can 
 # be set in order to force which device is accessed
 
-system = platform.system()
-if system != 'Linux':
-    raise RuntimeError(f'Unexpected os: {system}')
-
 SERIAL = os.getenv('SERIAL_TL_PM16_130')
 
 class pm16_130:
