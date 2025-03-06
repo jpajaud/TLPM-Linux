@@ -1,6 +1,4 @@
 import sys
-# this line is a quick fix for an error in which the numpy package is not visible to the virtual environment
-# sys.path.append('path/to/environment/site-packages')
 from setuptools   import setup, find_packages
 import numpy
 
